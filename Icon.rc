@@ -1,0 +1,3 @@
+
+#define FENRISUL_OP2_ICON 2
+FENRISUL_OP2_ICON ICON "Op2Icon.ico"
