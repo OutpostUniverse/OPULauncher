@@ -1,6 +1,8 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <wininet.h>
+#include <shellapi.h>
 
 #include <cstdlib>
 #include <cstdio>
@@ -10,9 +12,133 @@
 #include <memory>
 #include <filesystem>
 
-static constexpr wchar_t AppName[]    = L"Outpost2.exe";
-static constexpr wchar_t AppRelPath[] = L"..";
-static constexpr wchar_t LoaderFlag[] = L"/OPU";
+static constexpr wchar_t  AppName[]    = L"Outpost2.exe";
+static constexpr wchar_t  AppRelPath[] = L"..";
+static constexpr uint32_t GameVersion  = 1400;
+static constexpr wchar_t  IniKey[]     = L"CheckForUpdates";
+static constexpr wchar_t  IniName[]    = L".\\outpost2.ini";
+static constexpr wchar_t  IniSection[] = L"Game";
+static constexpr wchar_t  LoaderFlag[] = L"/OPU";
+static constexpr wchar_t  UpdateURL[]  = L"https://www.outpost2.net/updatecheck/";
+static constexpr wchar_t  UserAgent[]  = L"OPULauncher/1.4.0";
+
+// =====================================================================================================================
+bool CheckForUpdates()
+{
+  bool result = false;
+  // Check that updates are configured in the INI and ask the user if not.
+  int32_t updateCheckEnabled = GetPrivateProfileIntW(IniSection, IniKey, -1, IniName);
+  if (updateCheckEnabled == -1) {
+    if (MessageBoxW(nullptr,
+                    L"Would you like to check for updates when starting Outpost 2? Note that this requires an internet connection, and will send your game and operating system version to OPU. No other information is collected.",
+                    L"OPU Update",
+                    MB_YESNO | MB_ICONINFORMATION) == IDYES) {
+      WritePrivateProfileStringW(IniSection, IniKey, L"1", IniName);
+      updateCheckEnabled = 1;
+    } else {
+      WritePrivateProfileStringW(IniSection, IniKey, L"0", IniName);
+      updateCheckEnabled = 0;
+    }
+  }
+
+  if (updateCheckEnabled > 0) {
+    HINTERNET hInternet = InternetOpenW(UserAgent,
+                                        INTERNET_OPEN_TYPE_PRECONFIG,
+                                        nullptr,
+                                        nullptr,
+                                        0);
+    if (hInternet) {
+      // Configure the timeout (2.5s default) so we don't wait forever if internet is bad/unstable
+      uint32_t connectTimeoutMs = GetPrivateProfileIntW(IniSection, L"UpdateCheckTimeoutMs", 2500, IniName);
+      InternetSetOptionW(hInternet, INTERNET_OPTION_CONNECT_TIMEOUT, &connectTimeoutMs, sizeof(connectTimeoutMs));
+
+      // Game update version
+      std::wstringstream headersBuilder;
+      headersBuilder << "X-Update-Version: " << GameVersion << "\n";
+
+      // Windows version/build (and service pack if available)
+      OSVERSIONINFOW versionInfo = { };
+      versionInfo.dwOSVersionInfoSize = sizeof(versionInfo);
+      if (GetVersionExW(&versionInfo)) {
+        headersBuilder << "X-Windows-Version: "
+                      << versionInfo.dwMajorVersion << "." << versionInfo.dwMinorVersion
+                      << " build " << versionInfo.dwBuildNumber;
+        if (versionInfo.szCSDVersion[0]) {
+          headersBuilder << " " << versionInfo.szCSDVersion;
+        }
+        headersBuilder << "\n";
+      }
+
+      // Wine version (and host OS info) if present
+      HMODULE hNtdll = GetModuleHandleW(L"ntdll.dll");
+      if (hNtdll) {
+        auto*const pfnwine_get_version = (const char* (*)())GetProcAddress(hNtdll, "wine_get_version");
+        if (pfnwine_get_version) {
+          const char*const wineVersion = pfnwine_get_version();
+          if (wineVersion) {
+            headersBuilder << "X-Wine-Version: " << wineVersion << "\n";
+            auto*const pfnwine_get_host_version = (void (*)(const char**, const char**))GetProcAddress(hNtdll, "wine_get_host_version");
+            if (pfnwine_get_host_version) {
+              const char* sysname = nullptr;
+              const char* release = nullptr;
+              pfnwine_get_host_version(&sysname, &release);
+              if (sysname != nullptr && release != nullptr) {
+                headersBuilder << "X-Wine-Host-Version: " << sysname << " " << release << "\n";
+              }
+            }
+          }
+        }
+      }
+
+      // Send the HTTP request to the server and fetch its contents.
+      const auto& headers = headersBuilder.str();
+      HINTERNET hUrl = InternetOpenUrlW(hInternet,
+                                        UpdateURL,
+                                        headers.c_str(),
+                                        headers.size(),
+                                        INTERNET_FLAG_RELOAD,
+                                        0);
+      if (hUrl) {
+        std::stringstream dataBuilder;
+        char buffer[1024];
+        DWORD numBytesRead = ULONG_MAX;
+        while (InternetReadFile(hUrl, buffer, sizeof(buffer), &numBytesRead)
+              && numBytesRead > 0) {
+          dataBuilder.write(buffer, numBytesRead);
+        }
+        InternetCloseHandle(hUrl);
+
+        // First line of the response should contain a URL pointing to the update page,
+        // or empty if the client is already up to date.
+        const auto& data = dataBuilder.str();
+        if (!data.empty()) {
+          if (MessageBoxW(nullptr,
+                          L"There is a newer version of OPU Update available. Would you like to download the update now?",
+                          L"Update Available",
+                          MB_YESNO | MB_ICONINFORMATION) == IDYES) {
+            // Check that the URL is a valid HTTPS URL before we pass it to ShellExecute for security reasons.
+            URL_COMPONENTSA urlComponents = { };
+            memset(&urlComponents, 0, sizeof(urlComponents));
+            urlComponents.dwStructSize = sizeof(urlComponents);
+            if (InternetCrackUrlA(data.c_str(), data.size(), 0, &urlComponents)
+                && urlComponents.nScheme == INTERNET_SCHEME_HTTPS) {
+              // Open the URL in the default browser.
+              result = true;
+              ShellExecuteA(nullptr, "open", data.c_str(), nullptr, nullptr, SW_SHOW);
+            } else {
+              MessageBoxW(nullptr,
+                          L"The server returned an invalid response. Please visit the update page manually.",
+                          L"Update Available",
+                          MB_ICONEXCLAMATION | MB_OK);
+            }
+          }
+        }
+      }
+      InternetCloseHandle(hInternet);
+    }
+  }
+  return result;
+}
 
 // =====================================================================================================================
 bool LoadApp(
@@ -73,6 +199,11 @@ int WINAPI wWinMain(
   wchar_t*   pCmdLine,
   int        nShowCmd)
 {
+  if (CheckForUpdates()) {
+    // A true return value means the user chose to update, so no need to launch the game.
+    return 0;
+  }
+
   const std::filesystem::path appPath = AppRelPath;
 
   PROCESS_INFORMATION processInfo = { };
