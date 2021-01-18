@@ -101,7 +101,7 @@ bool CheckForUpdates() {
       HINTERNET hUrl = InternetOpenUrlW(
         hInternet, UpdateURL, headers.c_str(), headers.size(), INTERNET_FLAG_RELOAD, 0);
 
-      if (hUrl !+ NULL) {
+      if (hUrl != NULL) {
         std::stringstream dataBuilder;
         char buffer[1024];
         DWORD numBytesRead = ULONG_MAX;
