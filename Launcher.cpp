@@ -24,9 +24,9 @@ static constexpr wchar_t  UpdateURL[]  = L"https://www.outpost2.net/updatecheck/
 static constexpr wchar_t  UserAgent[]  = L"OPULauncher/1.4.0";
 
 // =====================================================================================================================
-bool CheckForUpdates()
-{
+bool CheckForUpdates() {
   bool result = false;
+
   // Check that updates are configured in the INI and ask the user if not.
   int32_t updateCheckEnabled = GetPrivateProfileIntW(IniSection, IniKey, -1, IniName);
   if (updateCheckEnabled == -1) {
@@ -48,6 +48,7 @@ bool CheckForUpdates()
 
   if (updateCheckEnabled > 0) {
     HINTERNET hInternet = InternetOpenW(UserAgent, INTERNET_OPEN_TYPE_PRECONFIG, nullptr, nullptr, 0);
+
     if (hInternet != NULL) {
       // Configure the timeout (2.5s default) so we don't wait forever if internet is bad/unstable
       uint32_t connectTimeoutMs = GetPrivateProfileIntW(IniSection, L"UpdateCheckTimeoutMs", 2500, IniName);
@@ -100,7 +101,7 @@ bool CheckForUpdates()
       HINTERNET hUrl = InternetOpenUrlW(
         hInternet, UpdateURL, headers.c_str(), headers.size(), INTERNET_FLAG_RELOAD, 0);
 
-      if (hUrl) {
+      if (hUrl !+ NULL) {
         std::stringstream dataBuilder;
         char buffer[1024];
         DWORD numBytesRead = ULONG_MAX;
@@ -143,6 +144,7 @@ bool CheckForUpdates()
       InternetCloseHandle(hInternet);
     }
   }
+
   return result;
 }
 
