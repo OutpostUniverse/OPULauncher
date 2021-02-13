@@ -15,13 +15,13 @@
 
 static constexpr wchar_t  AppName[]    = L"Outpost2.exe";
 static constexpr wchar_t  AppRelPath[] = L"..";
-static constexpr uint32_t GameVersion  = 1400;
+static constexpr uint32_t GameVersion  = 1401;
 static constexpr wchar_t  IniKey[]     = L"CheckForUpdates";
 static constexpr wchar_t  IniName[]    = L".\\outpost2.ini";
 static constexpr wchar_t  IniSection[] = L"Game";
 static constexpr wchar_t  LoaderFlag[] = L"/OPU";
 static constexpr wchar_t  UpdateURL[]  = L"https://www.outpost2.net/updatecheck/";
-static constexpr wchar_t  UserAgent[]  = L"OPULauncher/1.4.0";
+static constexpr wchar_t  UserAgent[]  = L"OPULauncher/1.4.1";
 
 // =====================================================================================================================
 bool CheckForUpdates() {
